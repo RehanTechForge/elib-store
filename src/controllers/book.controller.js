@@ -3,6 +3,7 @@ import { ApiError } from "../utils/apiError.js";
 import { uploadOnCloudinary, deleteOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { OPTIONS } from "../constant.js";
+import mongoose from "mongoose";
 import { Book } from "../models/book.models.js";
 
 const createBook = asyncHandler(async (req, res) => {
@@ -213,24 +214,45 @@ const deleteBook = asyncHandler(async (req, res) => {
     );
 
 });
+// Middleware to validate ObjectId
 
 const getASingleBook = asyncHandler(async (req, res) => {
-    const bookId = req.params.id;
+    const bookId = req.params.bookId;
 
-    const book = await Book.findById({ _id: bookId });
-
+    const book = await Book.findById(bookId);
     if (!book) {
         throw new ApiError(
-            403,
+            401,
             "Book not found",
             false,
         )
     }
 
+    const newBook = await Book.aggregate([
+        {
+            $match: { _id: new mongoose.Types.ObjectId(bookId) } // Add match stage to filter by bookId
+        },
+        {
+            $lookup: {
+                from: "users",
+                localField: "uploadBy",
+                foreignField: "_id",
+                as: "uploadBy",
+            },
+        },
+        {
+            $addFields: {
+                uploadBy: {
+                    $arrayElemAt: ["$uploadBy.name", 0] // Access the first element of the array
+                }
+            }
+        }
+    ]);
+
     return res.status(200).json(
         new ApiResponse(
             200,
-            book,
+            newBook,
             "Book retrieved successfully",
             false,
         )
@@ -238,47 +260,45 @@ const getASingleBook = asyncHandler(async (req, res) => {
 
 });
 
-// const getAllBooks = asyncHandler(async (req, res) => {
-//     const options = {
-//         page: 1,
-//         limit: 2,
-//         collation: {
-//             locale: 'en',
-//         },
-//     };
-//     const books = await Book.find();
-//     const abc = await Book.paginate({}, options, function (err, result) {
-//         console.log(result.limit);
-//     });
-//     return res.status(200).json(
-//         new ApiResponse(
-//             200,
-//             abc,
-//             "All books retrieved successfully",
-//         )
-//     );
-// });
+
+
+
 
 const getAllBooks = asyncHandler(async (req, res) => {
     const options = {
-        page: 1,
-        limit: 10,
-        collation: {
-            locale: 'en',
-        },
+        page: req.query.page || 1,
+        limit: 10 // Number of items per page
     };
-    Book.paginate({}, options)
-        .then(result => {
-            return res.status(200).json(
-                new ApiResponse(
-                    200,
-                    result,
-                    "All books retrieved successfully",
-                )
-            );
+
+    // Perform the aggregation query
+    Book.aggregate([
+        {
+            $lookup: {
+                from: "users",
+                localField: "uploadBy",
+                foreignField: "_id",
+                as: "uploadBy",
+            },
+        },
+        {
+            $addFields: {
+                uploadBy: {
+                    $arrayElemAt: ["$uploadBy.name", 0]
+                }
+
+            }
+        }
+    ])
+        .then(results => {
+            // Manually paginate the results
+            const startIndex = (options.page - 1) * options.limit;
+            const endIndex = options.page * options.limit;
+            const paginatedResults = results.slice(startIndex, endIndex);
+
+            return res.status(200).json(new ApiResponse(200, paginatedResults, "Books retrieved successfully"));
         })
         .catch(err => {
-            // Handle error if any
+            console.error("Error:", err);
             return res.status(500).json(new ApiResponse(500, null, "Error occurred", true));
         });
 });

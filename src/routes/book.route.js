@@ -33,7 +33,7 @@ router.route("/delete/:id").delete(
     verifyJWT,
     deleteBook)
 
-router.route("/single/:id").get(getASingleBook)
+router.route("/id/:bookId").get(getASingleBook)
 router.route("/all").get(getAllBooks)
 
 
