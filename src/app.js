@@ -15,7 +15,7 @@ app.use(express.urlencoded({
 app.use(cookieParser());
 
 app.use(cors({
-    origin: config.cors,
+    origin: config.cors_origin,
     credentials: true,
 }));
 
